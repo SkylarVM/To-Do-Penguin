@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gamified To-Do + Penguin + Pomodoro</title>
+<style>
+/* ---------- Base UI ---------- */
+:root{
+  --brand:#60a5fa;
+  --bg1:#171c28; --bg2:#1f2937; --panel:#111827; --panel2:#1e293b;
+  --ok:#16a34a; --warn:#f59e0b; --danger:#dc2626; --link:#93c5fd;
+}
+*{box-sizing:border-box}
+body{font-family:'Poppins',system-ui,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(135deg,var(--bg1),var(--bg2));
+  color:#fff;display:flex;flex-direction:column;align-items:center;min-height:100vh;margin:0;padding:20px;overflow-x:hidden}
+h1{color:var(--brand);margin:0 0 10px}
+a{color:var(--link)}
+#levelDisplay{font-size:18px;margin-bottom:10px}
+#expDisplay{background:#2563eb;border-radius:12px;padding:8px 16px;margin-bottom:10px}
+#progressContainer{width:320px;height:20px;background:var(--panel2);border-radius:10px;overflow:hidden;margin-bottom:20px;box-shadow:inset 0 0 4px rgba(0,0,0,.4)}
+#progressBar{height:100%;width:0%;background:linear-gradient(90deg,#60a5fa,#3b82f6);transition:width .5s ease,background 1s ease}
+.container{display:flex;flex-wrap:wrap;justify-content:center;gap:20px;width:100%;max-width:1400px}
+.card{background:var(--panel);border-radius:16px;padding:18px;box-shadow:0 4px 10px rgba(0,0,0,.3);width:370px}
+.card h2{margin:0 0 10px}
+input,select,button{border:none;border-radius:10px;padding:10px 12px;font-size:14px;margin:4px 0}
+button{background:#2563eb;color:#fff;cursor:pointer}
+button:hover{background:#3b82f6}
+.small{font-size:12px;color:#cbd5e1}
+ul{list-style:none;padding:0;margin:0}
+li{background:var(--panel2);margin:6px 0;padding:10px 12px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+li .left{display:flex;flex-direction:column}
+li .editable{cursor:pointer;border-bottom:1px dotted transparent}
+li .editable:hover{border-color:var(--brand)}
+.inline-btns button{margin-left:6px}
+.deleteBtn{background:var(--danger)}
+.deleteBtn:hover{background:#ef4444}
+.ghost{background:transparent;border:1px solid #334155}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* Floating XP visuals */
+.xp-float{position:absolute;font-weight:700;pointer-events:none;opacity:1;transform:translateY(0) scale(1);animation:floatUp 1.2s ease-out forwards}
+@keyframes floatUp{0%{opacity:1;transform:translateY(0) scale(1)}80%{opacity:1;transform:translateY(-40px) scale(1.2)}100%{opacity:0;transform:translateY(-60px) scale(1.3)}}
+
+/* ---------- Toast (Penguin popup) ---------- */
+#toast{position:fixed;right:20px;bottom:20px;z-index:50;display:none;align-items:center;gap:12px;background:#0b1220;border:1px solid #334155;border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+#toast .t-avatar{width:40px;height:40px}
+#toast .t-text{max-width:240px}
+
+/* ---------- Pomodoro overlay ---------- */
+#pomodoroOverlay{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;flex-direction:column;justify-content:center;align-items:center;z-index:40}
+#pomodoroBox{background:#0f172a;padding:26px;border-radius:18px;text-align:center;width:340px;box-shadow:0 0 20px rgba(0,0,0,.5);border:1px solid #334155}
+#pomodoroTimer{font-size:48px;margin:12px 0 6px}
+.phase{font-size:13px;color:#94a3b8;margin-bottom:10px}
+#focusCircle,#breakCircle{width:140px;height:140px;border-radius:50%;animation:pulse 2s infinite ease-in-out;margin:12px auto;background:radial-gradient(circle,#2563eb 0%,#1d4ed8 70%,transparent 100%)}
+#breakCircle{display:none;background:radial-gradient(circle,#16a34a 0%,#15803d 70%,transparent 100%)}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+.pomo-btn{margin:6px 4px;padding:8px 14px;border-radius:10px}
+.exit{background:var(--danger)} .done{background:var(--ok)} .pause{background:var(--warn)}
+/* Minimize / Restore buttons */
+#pomoHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.ghost-link{background:transparent;border:1px solid #334155}
+
+/* ---------- “Video call” floating window (draggable) ---------- */
+#callWindow{position:fixed;right:18px;bottom:18px;width:320px;background:#0b1220;border:1px solid #334155;border-radius:16px;display:none;flex-direction:column;z-index:45;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+#callHeader{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid #1f2937;cursor:move}
+#callBody{padding:10px}
+#restoreBtn{background:#334155}
+
+/* ---------- Animated stats chart ---------- */
+#statsChart{width:100%;background:var(--panel2);border-radius:12px;padding:12px}
+.stat-row{margin:10px 0}
+.stat-label{font-size:13px;margin-bottom:4px;color:#cbd5e1}
+.stat-bar{height:22px;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#9333ea);width:0%;position:relative;transition:width 900ms ease}
+.stat-bar:hover .pct{opacity:1;transform:translateY(-2px)}
+.pct{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:12px;background:rgba(0,0,0,.35);padding:2px 6px;border-radius:999px;opacity:0;transition:all .2s ease}
+
+/* ---------- Avatar (3D-style Penguin) ---------- */
+.penguin{ --p:#0ea5e9; --accent:#0b7bbb; --white:#f8fafc;
+  width:110px;height:120px;position:relative;filter:drop-shadow(0 10px 20px rgba(0,0,0,.35))}
+.penguin .body{position:absolute;inset:0;border-radius:55% 55% 50% 50%/60% 60% 40% 40%;background:radial-gradient(circle at 50% 35%, var(--white) 0 45%, var(--p) 46% 100%)}
+.penguin .wing{position:absolute;top:45px;width:34px;height:54px;background:linear-gradient(180deg,var(--p),var(--accent));border-radius:40px;filter:brightness(.95)}
+.penguin .wing.left{left:-6px;transform:rotate(-12deg);transform-origin:top right}
+.penguin .wing.right{right:-6px;transform:rotate(12deg);transform-origin:top left}
+.penguin .eye{position:absolute;top:36px;width:14px;height:14px;border-radius:50%;background:#0f172a;box-shadow:0 0 0 3px var(--white)}
+.penguin .eye.left{left:34px}.penguin .eye.right{right:34px}
+.penguin .beak{position:absolute;top:58px;left:50%;transform:translateX(-50%);width:24px;height:14px;border-radius:0 0 14px 14px;background:linear-gradient(180deg,#f59e0b,#d97706)}
+/* Accessories */
+.acc{position:absolute}
+.acc.scarf{bottom:42px;left:50%;transform:translateX(-50%);width:84px;height:18px;background:linear-gradient(90deg,#ef4444,#f97316);border-radius:14px}
+.acc.scarf:after{content:"";position:absolute;left:8px;top:16px;width:16px;height:36px;background:linear-gradient(180deg,#ef4444,#f97316);border-radius:10px}
+.acc.glasses .eye{box-shadow:0 0 0 0 var(--white)}
+.acc.glasses:before,.acc.glasses:after{content:"";position:absolute;top:32px;width:22px;height:16px;border:2px solid #94a3b8;border-radius:4px}
+.acc.glasses:before{left:24px}.acc.glasses:after{right:24px}
+.acc.headphones{top:18px;left:50%;transform:translateX(-50%);width:86px;height:22px;border-radius:22px;background:linear-gradient(90deg,#475569,#64748b)}
+.acc.headphones:before,.acc.headphones:after{content:"";position:absolute;top:8px;width:16px;height:28px;border-radius:12px;background:#64748b}
+.acc.headphones:before{left:-6px}.acc.headphones:after{right:-6px}
+.acc.bow{top:22px;right:26px;width:22px;height:14px;background:#ec4899;border-radius:4px 4px 4px 4px;transform:rotate(20deg)}
+/* Tiny penguin (toast) */
+.penguin.tiny{transform:scale(.55);transform-origin:left bottom}
+
+/* ---------- Avatar Builder Card ---------- */
+#avatarPreview{display:flex;gap:14px;align-items:center}
+#avatarName{font-weight:600}
+.row .chip{padding:6px 10px;border-radius:999px;border:1px solid #334155;background:#0b1220;cursor:pointer}
+.row .chip.active{border-color:var(--brand);box-shadow:0 0 0 2px rgba(96,165,250,.2)}
+
+/* ---------- Category Call Controls (outside overlay) ---------- */
+#callControls button{margin-right:6px}
+</style>
+</head>
+<body>
+
+<h1>🎯 XP To-Do + Penguin Companion</h1>
+<div id="levelDisplay">Level: <span id="level">1</span></div>
+<div id="expDisplay">Total EXP: <span id="expPoints">0.00</span></div>
+<div id="progressContainer"><div id="progressBar"></div></div>
+
+<div class="container">
+  <!-- Tasks -->
+  <div class="card">
+    <h2>✅ To-Do List</h2>
+    <div class="row">
+      <input id="taskName" type="text" placeholder="New task..." style="flex:1">
+      <input id="taskXP" type="number" placeholder="XP" min="0.01" step="0.01" style="width:110px">
+    </div>
+    <div class="row">
+      <select id="taskCategory" style="flex:1"></select>
+      <button class="ghost" onclick="addCategory()">+ Add Category</button>
+      <button onclick="addTask()">Add Task</button>
+    </div>
+    <ul id="taskList"></ul>
+  </div>
+
+  <!-- Rewards -->
+  <div class="card">
+    <h2>🎁 Reward Store</h2>
+    <div class="row">
+      <input id="rewardName" type="text" placeholder="New reward..." style="flex:1">
+      <input id="rewardCost" type="number" placeholder="Cost XP" min="0.01" step="0.01" style="width:110px">
+      <button onclick="addReward()">Add</button>
+    </div>
+    <ul id="rewardList"></ul>
+  </div>
+
+  <!-- History -->
+  <div class="card">
+    <h2>📅 History (Today)</h2>
+    <p id="historySummary" class="small">Total: 0 Pomodoro(s) • 0 XP earned</p>
+    <ul id="historyList"></ul>
+  </div>
+
+  <!-- Pomodoro settings -->
+  <div class="card">
+    <h2>⏱️ Pomodoro Settings</h2>
+    <div class="row">
+      <label style="flex:1">Focus (min): <input id="focusInput" type="number" min="1" step="1" value="25" style="width:90px"></label>
+      <label style="flex:1">Break (min): <input id="breakInput" type="number" min="1" step="1" value="5" style="width:90px"></label>
+    </div>
+    <div class="row">
+      <button onclick="saveSettings()">Save Settings</button>
+      <button class="ghost" onclick="openMeet()">📡 Share call (Meet)</button>
+    </div>
+    <div id="callControls" class="row">
+      <button onclick="startFreeCall('Chill')">🎥 Call Penguin</button>
+      <button class="ghost" onclick="startFreeCall('Study')">Study</button>
+      <button class="ghost" onclick="startFreeCall('Exercise')">Exercise</button>
+      <button class="ghost" onclick="startFreeCall('Eat')">Eat</button>
+      <button class="ghost" onclick="startFreeCall('Bath')">Bath</button>
+      <button class="ghost" onclick="startFreeCall('Sleep')">Sleep</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="card">
+    <h2>📊 Category Stats</h2>
+    <div id="statsChart"></div>
+  </div>
+
+  <!-- Avatar -->
+  <div class="card">
+    <h2>🐧 My Penguin</h2>
+    <div id="avatarPreview">
+      <div id="penguinPreview" class="penguin" aria-label="penguin preview">
+        <div class="body"></div><div class="wing left"></div><div class="wing right"></div>
+        <div class="eye left"></div><div class="eye right"></div><div class="beak"></div>
+      </div>
+      <div>
+        <div>Hi, I’m <span id="avatarName">Pingu</span>!</div>
+        <div class="small">I’ll cheer you on in popups & calls.</div>
+      </div>
+    </div>
+    <div class="row">
+      <input id="nameInput" type="text" placeholder="Name (e.g., Penny)" style="flex:1">
+    </div>
+    <div class="row">
+      <div class="chip" data-color="#0ea5e9">Blue</div>
+      <div class="chip" data-color="#ef4444">Red</div>
+      <div class="chip" data-color="#22c55e">Green</div>
+      <div class="chip" data-color="#a855f7">Purple</div>
+      <div class="chip" data-color="#f59e0b">Gold</div>
+    </div>
+    <div class="row">
+      <select id="accessorySelect" style="flex:1">
+        <option value="">No accessory</option>
+        <option value="scarf">Scarf</option>
+        <option value="glasses">Glasses</option>
+        <option value="headphones">Headphones</option>
+        <option value="bow">Bow</option>
+      </select>
+      <button onclick="saveAvatar()">Save Avatar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pomodoro / Task Focus Overlay -->
+<div id="pomodoroOverlay" role="dialog" aria-modal="true">
+  <div id="pomodoroBox">
+    <div id="pomoHeader">
+      <div id="pomoTaskTitle">🍅 Focus</div>
+      <div>
+        <button class="ghost-link" onclick="minimizeCall()">➖ Minimize</button>
+        <button class="ghost-link" onclick="exitPomodoro()">✖ Close</button>
+      </div>
+    </div>
+    <div class="phase" id="phaseText">Focus</div>
+    <div id="focusCircle"></div>
+    <div id="breakCircle"></div>
+    <div id="pomodoroTimer">25:00</div>
+    <div>
+      <button class="pomo-btn pause" onclick="togglePause()">⏸️ Pause</button>
+      <button class="pomo-btn done" onclick="completePomodoro()">✅ Done</button>
+      <button class="pomo-btn exit" onclick="exitPomodoro()">❌ Exit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Floating draggable “call” window -->
+<div id="callWindow">
+  <div id="callHeader">
+    <span>📞 Penguin Call</span>
+    <div>
+      <button id="restoreBtn" onclick="restoreCall()">⛶</button>
+      <button class="ghost-link" onclick="closeCall()">✖</button>
+    </div>
+  </div>
+  <div id="callBody">
+    <div id="callPenguin" class="penguin" style="margin:auto">
+      <div class="body"></div><div class="wing left"></div><div class="wing right"></div>
+      <div class="eye left"></div><div class="eye right"></div><div class="beak"></div>
+    </div>
+    <div class="small" id="callCaption" style="text-align:center;margin-top:6px">Chilling…</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast">
+  <div id="toastPenguin" class="penguin tiny">
+    <div class="body"></div><div class="wing left"></div><div class="wing right"></div>
+    <div class="eye left"></div><div class="eye right"></div><div class="beak"></div>
+  </div>
+  <div class="t-text">
+    <div id="toastTitle" style="font-weight:600">Pingu</div>
+    <div id="toastMsg" class="small">Nice job!</div>
+  </div>
+</div>
+
+<audio id="bellSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"></audio>
+
+<script>
+/* ====================== DATA ====================== */
+let exp=parseFloat(localStorage.getItem("exp"))||0;
+let tasks=JSON.parse(localStorage.getItem("tasks"))||[];
+let rewards=JSON.parse(localStorage.getItem("rewards"))||[];
+let categories=JSON.parse(localStorage.getItem("categories"))||["Self-Care","Study","Work"];
+let categoryCounts=JSON.parse(localStorage.getItem("categoryCounts"))||{};
+let history=JSON.parse(localStorage.getItem("history"))||{};
+const today=new Date().toISOString().slice(0,10);
+if(!history[today])history[today]=[];
+let focusMinutes=parseInt(localStorage.getItem("focusMinutes"))||25;
+let breakMinutes=parseInt(localStorage.getItem("breakMinutes"))||5;
+
+let avatar=JSON.parse(localStorage.getItem("avatar"))||{
+  name:"Pingu", color:"#0ea5e9", accessory:""
+};
+
+/* ====================== ELEMENTS ====================== */
+const expDisplay=document.getElementById("expPoints");
+const levelDisplay=document.getElementById("level");
+const progressBar=document.getElementById("progressBar");
+const taskList=document.getElementById("taskList");
+const rewardList=document.getElementById("rewardList");
+const historyList=document.getElementById("historyList");
+const historySummary=document.getElementById("historySummary");
+const taskCategory=document.getElementById("taskCategory");
+const statsChart=document.getElementById("statsChart");
+const bell=document.getElementById("bellSound");
+
+/* Avatar elems */
+const penguinPreview=document.getElementById("penguinPreview");
+const avatarNameSpan=document.getElementById("avatarName");
+const nameInput=document.getElementById("nameInput");
+const accessorySelect=document.getElementById("accessorySelect");
+const colorChips=[...document.querySelectorAll('.chip')];
+
+/* Toast elems */
+const toast=document.getElementById("toast");
+const toastTitle=document.getElementById("toastTitle");
+const toastMsg=document.getElementById("toastMsg");
+const toastPenguin=document.getElementById("toastPenguin");
+
+/* Call window elems */
+const callWindow=document.getElementById("callWindow");
+const callHeader=document.getElementById("callHeader");
+const callPenguin=document.getElementById("callPenguin");
+const callCaption=document.getElementById("callCaption");
+
+/* Pomodoro elems */
+const overlay=document.getElementById("pomodoroOverlay");
+const timerDisplay=document.getElementById("pomodoroTimer");
+const titleDisplay=document.getElementById("pomoTaskTitle");
+const focusCircle=document.getElementById("focusCircle");
+const breakCircle=document.getElementById("breakCircle");
+const phaseText=document.getElementById("phaseText");
+
+/* ====================== LEVEL & PROGRESS ====================== */
+function getLevel(){return Math.floor(exp/100)+1;}
+function getBarColor(l){ if(l<3) return "linear-gradient(90deg,#60a5fa,#3b82f6)";
+  if(l<6) return "linear-gradient(90deg,#9333ea,#a855f7)";
+  if(l<10) return "linear-gradient(90deg,#f59e0b,#fbbf24)";
+  return "linear-gradient(90deg,#facc15,#fcd34d)";
+}
+function updateProgressBar(){
+  const l=getLevel(); const p=(exp%100);
+  progressBar.style.width=`${p}%`; progressBar.style.background=getBarColor(l);
+  levelDisplay.textContent=l;
+}
+function saveAll(){
+  localStorage.setItem("exp",exp.toFixed(2));
+  localStorage.setItem("tasks",JSON.stringify(tasks));
+  localStorage.setItem("rewards",JSON.stringify(rewards));
+  localStorage.setItem("categories",JSON.stringify(categories));
+  localStorage.setItem("categoryCounts",JSON.stringify(categoryCounts));
+  localStorage.setItem("history",JSON.stringify(history));
+  localStorage.setItem("avatar",JSON.stringify(avatar));
+  expDisplay.textContent=exp.toFixed(2);
+  updateProgressBar(); renderHistory(); renderStats();
+}
+
+/* ====================== CATEGORIES ====================== */
+function renderCategories(){
+  taskCategory.innerHTML="";
+  categories.forEach(c=>{
+    const opt=document.createElement("option"); opt.value=c; opt.textContent=c; taskCategory.append(opt);
+  });
+}
+function addCategory(){
+  const name=prompt("New category:");
+  if(name && name.trim()!==""){
+    if(!categories.includes(name)){ categories.push(name.trim()); saveAll(); renderCategories(); showToast(`${avatar.name}`,`New category “${name}” added!`); }
+  }
+}
+
+/* ====================== TASKS / REWARDS ====================== */
+function renderTasks(){
+  taskList.innerHTML="";
+  tasks.forEach((t,i)=>{
+    const li=document.createElement("li");
+    const left=document.createElement("div"); left.className="left";
+    const title=document.createElement("span"); title.className="editable"; title.textContent=t.name;
+    title.onclick=()=>editItem(tasks,i,"task");
+    const meta=document.createElement("span"); meta.className="small"; meta.textContent=`${t.category} • ${t.xp} XP`;
+    left.append(title,meta);
+
+    const right=document.createElement("div"); right.className="inline-btns";
+    const play=b("🎮 Focus",()=>startPomodoro(i));
+    const done=b("✔",e=>completeTask(i,e));
+    const del=b("🗑️",()=>deleteItem(tasks,i,"task"),"deleteBtn");
+    right.append(play,done,del);
+
+    li.append(left,right); taskList.append(li);
+  });
+}
+function renderRewards(){
+  rewardList.innerHTML="";
+  rewards.forEach((r,i)=>{
+    const li=document.createElement("li");
+    const left=document.createElement("div"); left.className="left";
+    const title=document.createElement("span"); title.className="editable"; title.textContent=r.name;
+    title.onclick=()=>editItem(rewards,i,"reward");
+    const meta=document.createElement("span"); meta.className="small"; meta.textContent=`Costs ${r.cost} XP`;
+    left.append(title,meta);
+
+    const right=document.createElement("div"); right.className="inline-btns";
+    const buy=b("Buy",()=>redeemReward(i));
+    const del=b("🗑️",()=>deleteItem(rewards,i,"reward"),"deleteBtn");
+    right.append(buy,del);
+
+    li.append(left,right); rewardList.append(li);
+  });
+}
+function editItem(list,i,type){
+  const nn=prompt(`Edit ${type} name:`,list[i].name);
+  if(nn && nn.trim()!==""){ list[i].name=nn.trim(); saveAll(); type==="task"?renderTasks():renderRewards(); }
+}
+function deleteItem(list,i,type){
+  if(confirm(`Delete this ${type}?`)){ list.splice(i,1); saveAll(); type==="task"?renderTasks():renderRewards(); }
+}
+function addTask(){
+  const name=document.getElementById("taskName").value.trim();
+  const xp=parseFloat(document.getElementById("taskXP").value);
+  const cat=taskCategory.value;
+  if(!name || isNaN(xp)) return alert("Enter task and XP");
+  tasks.push({name,xp,category:cat});
+  document.getElementById("taskName").value=""; document.getElementById("taskXP").value="";
+  saveAll(); renderTasks();
+}
+function addReward(){
+  const name=document.getElementById("rewardName").value.trim();
+  const cost=parseFloat(document.getElementById("rewardCost").value);
+  if(!name || isNaN(cost)) return alert("Enter reward & cost");
+  rewards.push({name,cost});
+  document.getElementById("rewardName").value=""; document.getElementById("rewardCost").value="";
+  saveAll(); renderRewards();
+}
+
+/* XP float */
+function createXPFloat(xp,e){
+  const s=document.createElement("span"); s.className="xp-float"; s.textContent=`+${xp} XP`;
+  s.style.color="#facc15"; s.style.fontSize="18px";
+  document.body.appendChild(s);
+  const r=e.target.getBoundingClientRect(); s.style.left=r.left+r.width/2+"px"; s.style.top=r.top-10+"px";
+  setTimeout(()=>s.remove(),1200);
+}
+
+/* Complete task */
+function completeTask(i,e){
+  const before=getLevel(); const g=parseFloat(tasks[i].xp);
+  exp+=g; createXPFloat(g,e);
+  const cat=tasks[i].category;
+  categoryCounts[cat]=(categoryCounts[cat]||0)+1;
+  if(categoryCounts[cat]%5===0) showToast(avatar.name,`👏 You’ve completed ${categoryCounts[cat]} ${cat} tasks!`);
+  history[today].push({name:tasks[i].name,xp:g,pomodoros:0,category:cat});
+  tasks.splice(i,1); saveAll(); renderTasks();
+  const after=getLevel(); if(after>before) showToast(avatar.name,`🏆 Level Up! You’re now Level ${after}!`);
+}
+
+/* Rewards spend */
+function redeemReward(i){
+  const c=parseFloat(rewards[i].cost);
+  if(exp<c) return alert("Not enough XP!");
+  exp-=c; saveAll(); renderRewards();
+}
+
+/* ====================== HISTORY & STATS ====================== */
+function renderHistory(){
+  const data=history[today]||[]; historyList.innerHTML="";
+  let totalXP=0,totalPomo=0;
+  data.forEach(h=>{
+    totalXP+=h.xp; totalPomo+=h.pomodoros;
+    const li=document.createElement("li");
+    li.textContent=`${h.name} (${h.category||"Uncategorized"}) – ${h.pomodoros} Pomodoro(s) +${h.xp} XP`;
+    historyList.append(li);
+  });
+  historySummary.textContent=`Total: ${totalPomo} Pomodoro${totalPomo!==1?"s":""} • ${totalXP.toFixed(2)} XP earned`;
+}
+function renderStats(){
+  statsChart.innerHTML="";
+  const totalCompleted=Object.values(categoryCounts).reduce((a,b)=>a+b,0);
+  if(totalCompleted===0){ statsChart.innerHTML="<p class='small'>No tasks completed yet.</p>"; return; }
+  // Animated rows
+  Object.entries(categoryCounts).forEach(([cat,count],idx)=>{
+    const row=document.createElement("div"); row.className="stat-row";
+    const label=document.createElement("div"); label.className="stat-label"; label.textContent=`${cat}: ${count}`;
+    const bar=document.createElement("div"); bar.className="stat-bar";
+    const pct=document.createElement("div"); pct.className="pct"; const p=((count/totalCompleted)*100).toFixed(0);
+    pct.textContent=`${p}%`;
+    bar.append(pct); row.append(label,bar); statsChart.append(row);
+    // Delay for staggered animation
+    setTimeout(()=>{ bar.style.width=p+"%"; bar.style.background=`linear-gradient(90deg, hsl(${(idx*60)%360} 90% 60%), hsl(${(idx*60+45)%360} 90% 55%))`; }, 80*idx);
+  });
+}
+
+/* ====================== AVATAR (Penguin) ====================== */
+function applyPenguin(el,color,accessory){
+  el.style.setProperty('--p',color);
+  el.style.setProperty('--accent',shade(color,-18));
+  // remove old accessories
+  el.querySelectorAll('.acc').forEach(n=>n.remove());
+  if(accessory){
+    const a=document.createElement('div'); a.className=`acc ${accessory}`;
+    el.appendChild(a);
+    if(accessory==='glasses'){ // glasses uses frame over eyes
+      a.classList.add('glasses');
+    }
+  }
+}
+function saveAvatar(){
+  avatar.name=(nameInput.value.trim()||avatar.name);
+  avatar.color=currentChipColor||avatar.color;
+  avatar.accessory=accessorySelect.value||"";
+  avatarNameSpan.textContent=avatar.name;
+  applyPenguin(penguinPreview,avatar.color,avatar.accessory);
+  applyPenguin(toastPenguin,avatar.color,avatar.accessory);
+  applyPenguin(callPenguin,avatar.color,avatar.accessory);
+  saveAll();
+  showToast(avatar.name,"I’m updated! Let’s crush some tasks 🐧");
+}
+let currentChipColor=avatar.color;
+colorChips.forEach(ch=>{
+  if(ch.dataset.color===avatar.color) ch.classList.add('active');
+  ch.onclick=()=>{
+    colorChips.forEach(c=>c.classList.remove('active'));
+    ch.classList.add('active');
+    currentChipColor=ch.dataset.color;
+    applyPenguin(penguinPreview,currentChipColor,accessorySelect.value);
+  };
+});
+function initAvatar(){
+  nameInput.value=avatar.name;
+  accessorySelect.value=avatar.accessory||"";
+  avatarNameSpan.textContent=avatar.name;
+  applyPenguin(penguinPreview,avatar.color,avatar.accessory);
+  applyPenguin(toastPenguin,avatar.color,avatar.accessory);
+  applyPenguin(callPenguin,avatar.color,avatar.accessory);
+}
+/* Tiny helpers */
+function shade(hex,percent){
+  // simple HSL-ish shading
+  const c=parseInt(hex.slice(1),16); let r=(c>>16)&255,g=(c>>8)&255,b=c&255;
+  r=Math.min(255,Math.max(0, r + Math.round(255*percent/100)));
+  g=Math.min(255,Math.max(0, g + Math.round(255*percent/100)));
+  b=Math.min(255,Math.max(0, b + Math.round(255*percent/100)));
+  return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+}
+
+/* ====================== TOAST ====================== */
+let toastTimeout=null;
+function showToast(title,msg){
+  toastTitle.textContent=title;
+  toastMsg.textContent=msg;
+  toast.style.display="flex";
+  clearTimeout(toastTimeout);
+  toastTimeout=setTimeout(()=>{ toast.style.display="none"; }, 3400);
+}
+
+/* ====================== POMODORO / CALL ====================== */
+let pomoIndex=null,pomoTimer=null,secondsLeft=0,pomoCount=0,isPaused=false,isBreak=false;
+let currentCallMode="Chill"; // for free call
+function startPomodoro(i){
+  currentCallMode="Study";
+  pomoIndex=i; pomoCount=0; secondsLeft=focusMinutes*60; isPaused=false; isBreak=false;
+  titleDisplay.textContent=`🍅 Focus: ${tasks[i].name}`;
+  phaseText.textContent="Focus";
+  overlay.style.display="flex";
+  focusCircle.style.display="block"; breakCircle.style.display="none";
+  updateTimerDisplay();
+  clearInterval(pomoTimer); pomoTimer=setInterval(runPomodoro,1000);
+  // activity animation
+  setPenguinActivity(callPenguin,"Study");
+}
+function runPomodoro(){
+  if(isPaused) return;
+  secondsLeft--;
+  if(secondsLeft<=0){
+    clearInterval(pomoTimer); bell.play();
+    if(!isBreak){ pomoCount++; startBreak(); }
+    else{ startNextFocus(); }
+  }
+  updateTimerDisplay();
+}
+function startBreak(){
+  isBreak=true; secondsLeft=breakMinutes*60;
+  focusCircle.style.display="none"; breakCircle.style.display="block";
+  phaseText.textContent="Short break";
+  setPenguinActivity(callPenguin,"Chill");
+  pomoTimer=setInterval(runPomodoro,1000);
+}
+function startNextFocus(){
+  isBreak=false; secondsLeft=focusMinutes*60;
+  focusCircle.style.display="block"; breakCircle.style.display="none";
+  phaseText.textContent="Focus";
+  setPenguinActivity(callPenguin,"Study");
+  bell.play(); pomoTimer=setInterval(runPomodoro,1000);
+}
+function updateTimerDisplay(){
+  const m=Math.floor(secondsLeft/60),s=secondsLeft%60;
+  timerDisplay.textContent=`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+}
+function togglePause(){ isPaused=!isPaused; }
+function exitPomodoro(){
+  clearInterval(pomoTimer); overlay.style.display="none";
+  // keep floating window if minimized; no changes to tasks/exp
+  pomoIndex=null; secondsLeft=0; isPaused=false; isBreak=false;
+}
+function completePomodoro(){
+  clearInterval(pomoTimer); overlay.style.display="none";
+  if(pomoIndex===null) return;
+  const done=confirm(`Finish "${tasks[pomoIndex].name}"?\nPomodoros: ${pomoCount}`);
+  if(done){
+    const xpGain=parseFloat(tasks[pomoIndex].xp);
+    exp+=xpGain;
+    const cat=tasks[pomoIndex].category;
+    categoryCounts[cat]=(categoryCounts[cat]||0)+1;
+    if(categoryCounts[cat]%5===0) showToast(avatar.name,`👏 You’ve completed ${categoryCounts[cat]} ${cat} tasks!`);
+    history[today].push({name:tasks[pomoIndex].name,xp:xpGain,pomodoros:pomoCount,category:cat});
+    tasks.splice(pomoIndex,1);
+    showToast(avatar.name,`✅ Completed in ${pomoCount} Pomodoro(s)! +${xpGain} XP`);
+    saveAll(); renderTasks();
+  }
+  pomoIndex=null; secondsLeft=0; isPaused=false; isBreak=false;
+}
+
+/* Start a free “call” with a selected category animation */
+function startFreeCall(mode){
+  currentCallMode=mode||"Chill";
+  // show fullscreen overlay like a call with controls
+  titleDisplay.textContent=`📞 ${avatar.name} — ${mode}`;
+  phaseText.textContent=mode;
+  secondsLeft=focusMinutes*60; // just show timer if needed
+  overlay.style.display="flex"; focusCircle.style.display="block"; breakCircle.style.display="none";
+  setPenguinActivity(callPenguin,mode);
+  clearInterval(pomoTimer);
+}
+
+/* Minimize / Restore / Close call */
+function minimizeCall(){
+  overlay.style.display="none";
+  callWindow.style.display="flex";
+  setPenguinActivity(callPenguin,currentCallMode);
+  callCaption.textContent=captionFor(currentCallMode);
+}
+function restoreCall(){
+  overlay.style.display="flex";
+}
+function closeCall(){
+  callWindow.style.display="none";
+}
+function openMeet(){
+  // Opens Google Meet “new meeting” shortcut (user grants/uses their account in browser)
+  window.open("https://meet.new","_blank");
+}
+
+/* Draggable floating window */
+(function makeDraggable(){
+  let dragging=false,offX=0,offY=0;
+  callHeader.addEventListener('mousedown',e=>{
+    dragging=true; const r=callWindow.getBoundingClientRect(); offX=e.clientX-r.left; offY=e.clientY-r.top;
+    document.body.style.userSelect='none';
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    callWindow.style.left=(e.clientX-offX)+'px';
+    callWindow.style.top=(e.clientY-offY)+'px';
+    callWindow.style.right='auto'; callWindow.style.bottom='auto';
+  });
+  window.addEventListener('mouseup',()=>{ dragging=false; document.body.style.userSelect=''; });
+})();
+
+/* Penguin activity animations (simple wing wiggles / bounce per mode) */
+let wingAnimInterval=null;
+function setPenguinActivity(el,mode){
+  clearInterval(wingAnimInterval);
+  const left=el.querySelector('.wing.left'), right=el.querySelector('.wing.right');
+  const body=el.querySelector('.body');
+  let t=0;
+  wingAnimInterval=setInterval(()=>{
+    t+=1;
+    switch(mode){
+      case "Study":
+        // subtle typing wiggle
+        left.style.transform=`rotate(${-12 + Math.sin(t/3)*3}deg)`;
+        right.style.transform=`rotate(${12 - Math.sin(t/3)*3}deg)`;
+        body.style.transform=`translateY(${Math.sin(t/6)*1.5}px)`;
+        break;
+      case "Exercise":
+        // jumping jacks
+        left.style.transform=`rotate(${-30 + Math.sin(t/4)*20}deg)`;
+        right.style.transform=`rotate(${30 - Math.sin(t/4)*20}deg)`;
+        body.style.transform=`translateY(${Math.abs(Math.sin(t/5))*6}px)`;
+        break;
+      case "Eat":
+        // little chomp (beak bounce)
+        left.style.transform=`rotate(-12deg)`;
+        right.style.transform=`rotate(12deg)`;
+        body.style.transform=`translateY(${Math.abs(Math.sin(t/7))*3}px)`;
+        break;
+      case "Bath":
+        // splashing
+        left.style.transform=`rotate(${-20 + Math.sin(t/4)*12}deg)`;
+        right.style.transform=`rotate(${20 - Math.sin(t/4)*12}deg)`;
+        body.style.transform=`translateY(${Math.sin(t/3)*2.5}px)`;
+        break;
+      case "Sleep":
+        left.style.transform=`rotate(-12deg)`;
+        right.style.transform=`rotate(12deg)`;
+        body.style.transform=`translateY(${Math.sin(t/12)*1.2}px)`;
+        break;
+      default: // Chill
+        left.style.transform=`rotate(${-12 + Math.sin(t/8)*5}deg)`;
+        right.style.transform=`rotate(${12 - Math.sin(t/8)*5}deg)`;
+        body.style.transform=`translateY(${Math.sin(t/10)*2}px)`;
+    }
+  }, 50);
+}
+function captionFor(mode){
+  return ({
+    Study:"Studying with you…",
+    Exercise:"Let’s move! 💪",
+    Eat:"Snack break 🍣",
+    Bath:"Self-care time 🛁",
+    Sleep:"Resting 😴",
+    Chill:"Chilling…"
+  })[mode] || "Chilling…";
+}
+
+/* ====================== SETTINGS ====================== */
+function saveSettings(){
+  focusMinutes=parseInt(document.getElementById("focusInput").value)||25;
+  breakMinutes=parseInt(document.getElementById("breakInput").value)||5;
+  localStorage.setItem("focusMinutes",focusMinutes);
+  localStorage.setItem("breakMinutes",breakMinutes);
+  showToast(avatar.name,`Pomodoro set: ${focusMinutes}m focus / ${breakMinutes}m break`);
+}
+
+/* ====================== HELPERS ====================== */
+function b(label,fn,cls){ const bt=document.createElement("button"); bt.textContent=label; bt.onclick=fn; if(cls) bt.className=cls; return bt; }
+
+/* ====================== INIT ====================== */
+function init(){
+  document.getElementById("focusInput").value=focusMinutes;
+  document.getElementById("breakInput").value=breakMinutes;
+  expDisplay.textContent=exp.toFixed(2);
+  renderCategories(); renderTasks(); renderRewards(); renderHistory(); renderStats(); updateProgressBar();
+  initAvatar();
+  // set default penguins to avatar color/accessory
+  applyPenguin(toastPenguin,avatar.color,avatar.accessory);
+  applyPenguin(callPenguin,avatar.color,avatar.accessory);
+}
+window.onload=init;
+</script>
+</body>
+</html>
